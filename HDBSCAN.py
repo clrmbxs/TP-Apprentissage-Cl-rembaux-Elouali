@@ -1,106 +1,90 @@
+import hdbscan
 import numpy as np
 import matplotlib.pyplot as plt
-import os
-from scipy.io import arff 
+from scipy.io import arff
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score
 import warnings
-import pandas as pd
-# Importation de la librairie externe HDBSCAN
-import hdbscan  
 
 warnings.filterwarnings("ignore")
-SPECIFIC_DATA_PATH = './dataset/dataset/artificial/' 
 
-def optimiser_hdbscan_par_grille(file_name, size_range, samples_range, data_path=SPECIFIC_DATA_PATH):
-    """
-    Effectue une recherche par grille sur min_cluster_size et min_samples, 
-    calcule le score Silhouette pour chaque combinaison et visualise le résultat.
-    """
-    print(f"\n--- Optimisation HDBSCAN par Grille pour {file_name} ---")
-    full_path = os.path.join(data_path, file_name)
-
-    # --- 1. LECTURE DES DONNÉES ET STANDARDISATION ---
-    try:
-        databrut, _ = arff.loadarff(open(full_path, 'r')) 
-        X = np.array([[x[0], x[1]] for x in databrut])
-        X_scaled = StandardScaler().fit_transform(X)
-    except Exception as e:
-        print(f"ERREUR lors du chargement de l'ARFF : {e}")
-        return
-
-    # --- 2. RECHERCHE PAR GRILLE ---
-    results = []
+def traiter_fichier(nom_fichier):
+    path = './dataset/dataset/artificial/' + nom_fichier
+    print("Traitement de : " + nom_fichier)
     
-    for min_size in size_range:
-        for min_samples in samples_range:
-            # S'assurer que min_samples >= min_cluster_size (bonne pratique)
-            if min_samples < min_size:
-                continue 
-
-            try:
-                # Entraînement du modèle HDBSCAN
-                clusterer = hdbscan.HDBSCAN(
-                    min_cluster_size=min_size,
-                    min_samples=min_samples,
-                    prediction_data=True # Nécessaire si on veut utiliser les métriques
-                )
-                clusterer.fit(X_scaled)
-                labels = clusterer.labels_
-
-                # Calcul des métriques (HDBSCAN peut générer beaucoup de bruit, étiquette -1)
-                # On calcule le Silhouette Score uniquement si plus d'un cluster est trouvé
-                if len(np.unique(labels)) > 1 and labels.max() != -1:
-                    score_sil = silhouette_score(X_scaled, labels)
-                else:
-                    score_sil = -1 # Mauvais score si pas de cluster ou un seul cluster
-
-                results.append({
-                    'min_cluster_size': min_size,
-                    'min_samples': min_samples,
-                    'Silhouette': score_sil,
-                    'model': clusterer
-                })
-            except Exception as e:
-                # Ignorer les combinaisons qui échouent
-                continue 
-
-    if not results:
-        print("Aucun clustering HDBSCAN valide trouvé pour la plage de paramètres spécifiée.")
-        return
-
-    # --- 3. ANALYSE ET SÉLECTION OPTIMALE ---
-    results_df = pd.DataFrame(results)
-    best_solution = results_df.loc[results_df['Silhouette'].idxmax()]
-    best_size = int(best_solution['min_cluster_size'])
-    best_samples = int(best_solution['min_samples'])
-    best_score = best_solution['Silhouette']
+    data, meta = arff.loadarff(open(path, 'r'))
     
-    print(f"\n--- MEILLEURE SOLUTION HDBSCAN (Max Silhouette) ---")
-    print(f"Hyperparamètre min_cluster_size: {best_size}")
-    print(f"Hyperparamètre min_samples: {best_samples}")
-    print(f"Score Silhouette : {best_score:.4f}")
+    liste_points = []
+    for ligne in data:
+        liste_points.append([ligne[0], ligne[1]])
+    
+    X = np.array(liste_points)
+    
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    
+    # Recherche des meilleurs paramètres (Grid Search simple)
+    meilleur_score = -1
+    meilleurs_params = (0, 0)
+    
+    taille_range = range(2, 16)
+    matrice_scores = np.zeros((len(taille_range), len(taille_range)))
+    
+    print("Recherche des paramètres en cours...")
+    
+    for i in range(len(taille_range)):
+        for j in range(len(taille_range)):
+            min_size = taille_range[i]
+            min_samples = taille_range[j]
+            
+            # Création du modèle
+            clusterer = hdbscan.HDBSCAN(min_cluster_size=min_size, min_samples=min_samples)
+            labels = clusterer.fit_predict(X_scaled)
+            
+            # On calcule le silhouette score seulement si on a trouvé des clusters
+            # Si tout est en bruit (-1) ou un seul cluster, on met un mauvais score
+            n_labels = len(set(labels))
+            if -1 in labels:
+                n_labels -= 1
+            
+            if n_labels > 1:
+                score = silhouette_score(X_scaled, labels)
+            else:
+                score = -1
+            
+            matrice_scores[i, j] = score
+            
+            # On garde le meilleur
+            if score > meilleur_score:
+                meilleur_score = score
+                meilleurs_params = (min_size, min_samples)
 
-    # 4. VISUALISATION DU CLUSTERING FINAL (Basée sur le meilleur modèle)
-    best_model = hdbscan.HDBSCAN(min_cluster_size=best_size, min_samples=best_samples)
-    best_model.fit(X_scaled)
-    final_labels = best_model.labels_
+    best_size, best_samples = meilleurs_params
+    print("Meilleurs paramètres trouvés : size=", best_size, " samples=", best_samples)
+    print("Score :", round(meilleur_score, 3))
 
-    plt.figure(figsize=(10, 8))
-    # Utilisation des données originales (X) pour la visualisation
-    plt.scatter(X[:, 0], X[:, 1], c=final_labels, s=15, cmap='viridis')
-    plt.title(f"Clustering Optimal HDBSCAN: {file_name} (Size={best_size}, Samples={best_samples})")
-    plt.xlabel("Feature 0")
-    plt.ylabel("Feature 1")
+    # --- Graphique 1 : La Matrice ---
+    plt.figure()
+    plt.imshow(matrice_scores, origin='lower', cmap='viridis')
+    plt.colorbar(label='Silhouette Score')
+    plt.xlabel('Min Samples (index)')
+    plt.ylabel('Min Cluster Size (index)')
+    plt.title('Qualité du clustering selon les paramètres - ' + nom_fichier)
     plt.show()
 
+    # --- Graphique 2 : Le résultat final ---
+    model_final = hdbscan.HDBSCAN(min_cluster_size=best_size, min_samples=best_samples)
+    labels_final = model_final.fit_predict(X_scaled)
+    
+    plt.figure()
+    plt.scatter(X[:, 0], X[:, 1], c=labels_final, cmap='nipy_spectral', s=20)
+    plt.title('Résultat HDBSCAN : ' + nom_fichier)
+    plt.xlabel('X')
+    plt.ylabel('Y')
+    plt.show()
 
-# --- LANCEMENT DE L'ANALYSE ---
+# Liste des fichiers à tester
+datasets = ["banana.arff", "spiralsquare.arff", "2d-20c-no0.arff"]
 
-# ➡️ Choix du dataset de difficulté DBSCAN : spiralsquare.arff
-# ➡️ Plages de recherche : 
-#    - min_cluster_size de 5 à 15 (par pas de 1)
-#    - min_samples de 5 à 15 (par pas de 1)
-size_range = range(5, 16, 1)
-samples_range = range(5, 16, 1)
-optimiser_hdbscan_par_grille("spiralsquare.arff", size_range, samples_range)
+for d in datasets:
+    traiter_fichier(d)
