@@ -6,11 +6,12 @@ from scipy.io import arff
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
 import warnings
+from scipy.cluster.hierarchy import dendrogram, linkage
 
 warnings.filterwarnings("ignore")
 SPECIFIC_DATA_PATH = './dataset/dataset/artificial/' 
 
-def trouver_meilleur_clustering_agglomeratif(file_name, max_k=10, data_path=SPECIFIC_DATA_PATH):
+def trouver_meilleur_clustering_agglomeratif(file_name, metrique, max_k=10, data_path=SPECIFIC_DATA_PATH):
     """
     Teste différentes méthodes de linkage pour trouver la combinaison (Linkage, k) 
     optimale basée sur le Score Silhouette et affiche le résultat final.
@@ -28,7 +29,7 @@ def trouver_meilleur_clustering_agglomeratif(file_name, max_k=10, data_path=SPEC
         return
 
     # --- 2. BOUCLE D'ANALYSE (Linkage et k) ---
-    linkage_methods = ['ward', 'average', 'complete', 'single']
+    linkage_methods = ['single']
     all_results = []
     k_range = range(2, min(max_k + 1, datanp.shape[0]))
     
@@ -65,8 +66,16 @@ def trouver_meilleur_clustering_agglomeratif(file_name, max_k=10, data_path=SPEC
     
     # --- 3. SÉLECTION DU MEILLEUR MODÈLE GLOBAL ---
     
-    # Trouver le meilleur modèle basé sur le Score Silhouette
-    best_solution = results_df.loc[results_df['Silhouette'].idxmax()]
+    # Sélection du meilleur k selon la métrique choisie
+    if metrique == 1:
+        best_solution = results_df.loc[results_df['Silhouette'].idxmax()]
+
+    if metrique == 2:
+        best_solution = results_df.loc[results_df['Calinski-Harabasz'].idxmax()]
+
+    if metrique == 3:
+        best_solution = results_df.loc[results_df['Davies-Bouldin'].idxmin()]
+        print("idxmax:{} results_df['Davies-Bouldin'].idxmax() max:{max} ")
     best_k = int(best_solution['k'])
     best_method = best_solution['Linkage']
     
@@ -93,6 +102,17 @@ def trouver_meilleur_clustering_agglomeratif(file_name, max_k=10, data_path=SPEC
     print("\nTop 5 des résultats par Linkage et k (Score Silhouette):")
     print(results_df.sort_values(by='Silhouette', ascending=False).head(5)[['k', 'Linkage', 'Silhouette', 'Davies-Bouldin']].to_markdown(index=False, floatfmt=".4f"))
 
+    # --- 5bis. DENDROGRAMME ---
+
+#    plt.figure(figsize=(10, 6))
+    Z = linkage(datanp, method=best_method, metric="euclidean")
+
+    dendrogram(Z)
+    plt.title(f"Dendrogramme Agglomératif – {file_name} (Linkage={best_method})")
+    plt.xlabel("Points")
+    plt.ylabel("Distance")
+    plt.show()
+    
 
     # --- 5. VISUALISATION DU CLUSTERING FINAL OPTIMAL (Même style que K-Means) ---
     
@@ -103,12 +123,19 @@ def trouver_meilleur_clustering_agglomeratif(file_name, max_k=10, data_path=SPEC
     # NOTE: Nous n'affichons PAS les centroïdes car le clustering agglomératif n'en a pas.
     # L'affichage est donc visuellement le même que le résultat final de K-Means.
     
+
+
     plt.title(f"Clustering Agglomératif Optimal : {file_name} (Linkage={best_method}, k={best_k})")
     plt.xlabel("Feature 0")
     plt.ylabel("Feature 1")
+
+    
+
     plt.show()
+
+
 
 # --- LANCEMENT DE L'ANALYSE ---
 
-# ➡️ Lancement pour xclara.arff 
-trouver_meilleur_clustering_agglomeratif("impossible.arff")
+
+trouver_meilleur_clustering_agglomeratif("longsquare.arff",1)

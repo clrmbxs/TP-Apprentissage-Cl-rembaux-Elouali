@@ -7,31 +7,39 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
 import warnings
 
-# On ignore les warnings pour une sortie console plus claire
+import os
+os.environ["THREADPOOLCTL_VERBOSE"] = "0"
+
+
 warnings.filterwarnings("ignore")
 
-# --- PARAMÈTRE DU CHEMIN D'ACCÈS SPÉCIFIQUE À TON PROJET ---
-# Ce chemin correspond à : TP-APPRENTISSAGE-CL-REMBAUX-ELOUALI/dataset/dataset/artificial/
+
 SPECIFIC_DATA_PATH = './dataset/dataset/artificial/' 
 
-def trouver_meilleur_kmeans_et_visualiser(file_name, max_k=10, data_path=SPECIFIC_DATA_PATH):
-    """
-    Charge un dataset ARFF, exécute l'optimisation pour k-Means (k de 2 à max_k),
-    et affiche les courbes de métriques ainsi que le clustering optimal.
-    """
+#Exécute k-means sur un jeu de données pour un nombre de clusters allant de k=2 à k=10 et trouve la meilleure solution selon une métrique
+#Les métriques disponibles sont :
+#    -coefficient de silhouette pour metrique=1
+#    -coefficient de Calinski-Harabasz pour metrique=2
+#    -coefficient de Davies-Bouldin pour metrique=3
+#Des graphiques représentant la valeur des différentes métriques selon les solutions sont affichés
+#Une représentation des clusters de la meilleure solution est affichée
+def trouver_meilleur_kmeans_et_visualiser(file_name, metrique, max_k=10, data_path=SPECIFIC_DATA_PATH):
+
+    
+    
     
     print(f"--- Démarrage de l'optimisation k-Means pour {file_name} ---")
     
     # Construction du chemin complet
     full_path = os.path.join(data_path, file_name)
 
-    # --- 1. LECTURE ET PRÉPARATION DES DONNÉES ARFF ---
+    # Lecture et préparation des données
     try:
         if not os.path.exists(full_path):
              print(f"ERREUR: Fichier non trouvé à {full_path}")
              return
              
-        # Charge le fichier ARFF. On ignore les metadata (le second élément du tuple)
+        # Charge le fichier. On ignore les metadata (le second élément du tuple)
         databrut, _ = arff.loadarff(open(full_path, 'r')) 
         
         # Extraction des 2 features (X[0] et X[1]). On ignore le label de cluster (dernière colonne).
@@ -42,17 +50,18 @@ def trouver_meilleur_kmeans_et_visualiser(file_name, max_k=10, data_path=SPECIFI
         print(f"ERREUR lors du chargement de l'ARFF : {e}")
         return
 
-    # --- 2. BOUCLE D'ANALYSE POUR K = 2 à MAX_K ---
+    # Exécution de k-means de k=2 à k=10
     k_range = range(2, min(max_k + 1, datanp.shape[0]))
     results = [] 
     
     for k in k_range:
-        # Entraînement du modèle K-Means (10 initialisations pour la robustesse)
+        # Entraînement du modèle K-Means 
         model = KMeans(n_clusters=k, init='k-means++', n_init=10, random_state=42)
         model.fit(datanp)
         labels = model.labels_
-        
-        if len(np.unique(labels)) > 1: # Assure qu'il y a plus d'un cluster pour les métriques
+
+        # Assure qu'il y a plus d'un cluster
+        if len(np.unique(labels)) > 1: 
             score_sil = silhouette_score(datanp, labels)
             score_ch = calinski_harabasz_score(datanp, labels)
             score_db = davies_bouldin_score(datanp, labels)
@@ -63,26 +72,40 @@ def trouver_meilleur_kmeans_et_visualiser(file_name, max_k=10, data_path=SPECIFI
                 'Inertie': model.inertia_,
                 'Silhouette': score_sil,
                 'Calinski-Harabasz': score_ch,
-                'Davies-Bouldin': score_db
+                'Davies-Bouldin': score_db,
             })
             
     if not results:
-        print("Aucun clustering valide trouvé (Le dataset est peut-être trop petit).")
+        print("Aucun clustering valide trouvé.")
         return
 
     results_df = pd.DataFrame(results)
     
-    # --- 3. SÉLECTION DU MEILLEUR K (Basé sur le Max Silhouette) ---
-    best_solution = results_df.loc[results_df['Silhouette'].idxmax()]
+    # Sélection du meilleur k selon la métrique choisie
+    if metrique == 1:
+        best_solution = results_df.loc[results_df['Silhouette'].idxmax()]
+
+    if metrique == 2:
+        best_solution = results_df.loc[results_df['Calinski-Harabasz'].idxmax()]
+
+    if metrique == 3:
+        best_solution = results_df.loc[results_df['Davies-Bouldin'].idxmin()]
+
+
+
+    
     best_k = best_solution['k']
     best_model = best_solution['model']
     
-    print(f"\n--- MEILLEURE SOLUTION (Critère: Max Silhouette) ---")
+    print(f"\n--- MEILLEURE SOLUTION ---")
     print(f"Paramètre Optimal k: {int(best_k)}")
-    print(f"Score Silhouette : {best_solution['Silhouette']:.3f}")
-    print(f"Inertie pour ce k : {best_solution['Inertie']:.2f}")
 
-    # --- 4. VISUALISATION DES 4 COURBES D'OPTIMISATION ---
+    print(f"Inertie pour ce k : {best_solution['Inertie']:.2f}")
+    print(f"Score Silhouette : {best_solution['Silhouette']:.3f}")
+    print(f"Score Calinski-Harabasz : {best_solution['Calinski-Harabasz']:.4f}")
+    print(f"Score Davies-Bouldin : {best_solution['Davies-Bouldin']:.5f}")
+    
+    # Visualisation des 4 courbes des valeurs des métriques selon les valeurs de k
 
     fig, axs = plt.subplots(2, 2, figsize=(14, 12))
     fig.suptitle(f"Optimisation de k pour K-Means sur {file_name}", fontsize=16)
@@ -108,7 +131,7 @@ def trouver_meilleur_kmeans_et_visualiser(file_name, max_k=10, data_path=SPECIFI
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.show()
 
-    # --- 5. VISUALISATION DU CLUSTERING FINAL OPTIMAL ---
+    # Visualisation du meilleur clustering
     
     plt.figure(figsize=(8, 8))
     plt.scatter(datanp[:, 0], datanp[:, 1], c=best_model.labels_, s=15, cmap='viridis')
@@ -122,6 +145,5 @@ def trouver_meilleur_kmeans_et_visualiser(file_name, max_k=10, data_path=SPECIFI
     plt.show()
 
 
-# --- LANCEMENT DE L'ANALYSE ---
-# Lancement de l'analyse pour le premier dataset de succès (xclara.arff)
-trouver_meilleur_kmeans_et_visualiser("jain.arff")
+
+trouver_meilleur_kmeans_et_visualiser("xclara.arff",3)
