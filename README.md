@@ -1,4 +1,7 @@
-# TP-Apprentissage-Cl-rembaux-Elouali
+# TP-Apprentissage-Clérembaux-Elouali
+Binôme 1: Abderrahman El-Ouali
+Binôme 2: Samuel Clérembaux
+groupe: 5 SDBD A2
 
+Contient les implémentations des algorithmes de K-Means, agglomératif, DBSCAN et HDBSCAN ainsi que le dataset pour le TP de clustering.
 
-lien de Rapport enligne : https://docs.google.com/document/d/1bXDNvDuZFqQy9bKeMgkW2LOrJRr2mRf85c5o4kInJdw/edit?tab=t.0
